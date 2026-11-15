@@ -43,6 +43,28 @@ Returns acquisition dates and scene-level cloud cover. It uses Landsat before 20
 
 GeoTIFF pixels: 0 water, 1 trees, 2 flooded vegetation, 3 crops, 4 built area, 5 bare ground, 6 snow/ice, 8 rangeland, 255 NoData. The model's cloud class is excluded. The export shows the latest analysed scene, not a transition map.
 
+### Python client example
+
+```python
+import requests
+
+base = "https://barrier-norman-theaters-bouquet.trycloudflare.com"
+payload = {
+    "bbox": [65.46, 44.84, 65.463, 44.843],
+    "before_date": "2023-07-09",
+    "after_date": "2026-07-01",
+    "categories": ["trees", "water"],
+}
+response = requests.post(f"{base}/api/v2/cover", json=payload, timeout=300)
+response.raise_for_status()
+result = response.json()
+print("Actual dates:", result["years"])
+for row in result["rows"]:
+    print(row["class"], row["before_ha"], row["after_ha"])
+```
+
+Requests are synchronous. A 300-second client timeout is recommended for the date-based endpoint because it downloads multiple spectral bands. Do not retry automatically without a backoff; repeated analysis may be expensive.
+
 ## Forest-change analysis
 
 `POST /api/v1/forest`

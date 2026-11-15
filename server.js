@@ -22,6 +22,7 @@ http.createServer((req,res)=>{
   let released=false;function release(){if(isAnalysis&&!released){released=true;activeAnalyses--}}
   const proxy=http.request({hostname:'127.0.0.1',port:backendPort,path:req.url,method:req.method,headers:req.headers},r=>{res.writeHead(r.statusCode,r.headers);r.pipe(res);r.on('end',release)});
   proxy.on('error',()=>{release();if(!res.headersSent)reject(res,502,'Analysis service is unavailable.');else res.end()});
+  if(remote){let received=0;req.on('data',chunk=>{received+=chunk.length;if(received>131072){req.unpipe(proxy);if(!res.headersSent)reject(res,413,'Request body too large.');proxy.destroy();release()}})}
   req.on('aborted',()=>{proxy.destroy();release()});res.on('close',release);req.pipe(proxy);return;
  }
  let file=url.pathname;if(file==='/'||file==='/docs')file='/index.html';
