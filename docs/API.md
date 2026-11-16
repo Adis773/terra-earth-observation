@@ -104,3 +104,7 @@ The browser also creates CSV and GeoJSON exports locally.
 | 503 | An upstream catalog, tiler or model is temporarily unavailable. |
 
 Error details may be in Russian in this prototype. Requests are logged by the hosting server and the external satellite-data providers. Coordinates are sent to these providers to retrieve the chosen area. Results are estimates and require independent validation.
+
+### Scene coverage and provenance
+
+`coverage_percent` is the share of the selected area usable in both periods. `selected_area_ha` is the full selected area; `area_ha` is the comparable area, and `unobserved_area_ha` is excluded. Scene selection prefers lower scene-level cloud within ten-day windows; when needed, up to two dates within 45 days are composited. `scenes_metadata[].observations` reports each contributing date, item and added percentage. Predictions remain estimates; 10 m pixels cannot reliably resolve every urban tree.

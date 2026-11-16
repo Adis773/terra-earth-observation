@@ -440,7 +440,7 @@ def cover_scene_analysis(body: CoverSceneRequest):
     if valid.mean()<.1:raise HTTPException(422,'Слишком мало общих безоблачных пикселей. Выберите другие даты.')
     ys=np.linspace(n,s,height+1); row_areas=np.array([abs(geod.polygon_area_perimeter([w,e,e,w],[ys[i],ys[i],ys[i+1],ys[i+1]])[0])/width/10000 for i in range(height)])
     def area(mask):return float((mask.sum(axis=1)*row_areas).sum())
-    total=area(valid);codes={'water':0,'trees':1,'flooded_vegetation':2,'crops':3,'built_up':4,'bare_ground':5,'snow_ice':6,'rangeland':8};rows=[]
+    total=area(valid);selected_area=area(np.ones_like(valid,dtype=bool));codes={'water':0,'trees':1,'flooded_vegetation':2,'crops':3,'built_up':4,'bare_ground':5,'snow_ice':6,'rangeland':8};rows=[]
     for category in body.categories:
       label=LAND_CATEGORIES[category][1]
       if category in ('forest_loss','forest_gain'):
@@ -458,7 +458,7 @@ def cover_scene_analysis(body: CoverSceneRequest):
     if len(exports)>20:exports.pop(next(iter(exports)))
     actual=[meta1['date']]+([meta2['date']] if meta2 else [])
     overlays=build_class_overlays(a,b,valid,body.categories)
-    result={'geotiff_base64':base64.b64encode(tif).decode('ascii'),'map_overlays':overlays,'bbox':body.bbox,'years':actual,'scenes_metadata':[x for x in [meta1,meta2] if x],'area_ha':round(total,3),'coverage_percent':round(float(valid.mean())*100,2),'rows':rows,'geotiff_url':'/api/export/'+key+'.tif','report_id':key,'source':{'name':'Blue Marble Landcover / Sentinel-2 L1C','resolution_m':10,'method':'Классификация отдельных спутниковых снимков','items':[x['item'] for x in [meta1,meta2] if x]},'warning':'Оценка нейросети для отдельных снимков; облака определяются моделью и могут быть пропущены. Деревья не обязательно лес. Сезонность и ошибки модели влияют на сравнение. Достоверность отдельных классов зависит от региона.'}
+    result={'geotiff_base64':base64.b64encode(tif).decode('ascii'),'map_overlays':overlays,'bbox':body.bbox,'years':actual,'scenes_metadata':[x for x in [meta1,meta2] if x],'area_ha':round(total,3),'selected_area_ha':round(selected_area,3),'unobserved_area_ha':round(selected_area-total,3),'coverage_percent':round(float(valid.mean())*100,2),'rows':rows,'geotiff_url':'/api/export/'+key+'.tif','report_id':key,'source':{'name':'Blue Marble Landcover / Sentinel-2 L1C','resolution_m':10,'method':'Классификация отдельных спутниковых снимков','items':[x['item'] for x in [meta1,meta2] if x]},'warning':'Оценка нейросети: пробелы могут дополняться соседними снимками. Даты всех использованных снимков указаны в метаданных; облака могут быть пропущены. Деревья не обязательно лес. Сезонность и ошибки модели влияют на сравнение. Достоверность отдельных классов зависит от региона.'}
     reports[key]=result
     if len(reports)>20:reports.pop(next(iter(reports)))
     return result

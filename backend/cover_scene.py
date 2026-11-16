@@ -26,7 +26,7 @@ def candidates(box, date_iso):
     start=d-timedelta(days=45);end=d+timedelta(days=45)
     result=list(client.search(collections=['sentinel-2-l1c'],bbox=list(box),datetime=f'{start}/{end}',max_items=200).item_collection())
     result=[i for i in result if i.datetime and i.properties.get('eo:cloud_cover',100)<60 and all(b in i.assets for b in BANDS)]
-    result.sort(key=lambda i:(abs((i.datetime.date()-d).days),i.properties.get('eo:cloud_cover',100)))
+    result.sort(key=lambda i:(abs((i.datetime.date()-d).days)//10,i.properties.get('eo:cloud_cover',100),abs((i.datetime.date()-d).days)))
     return result
 
 def fetch(box,when,width,height):
@@ -34,11 +34,23 @@ def fetch(box,when,width,height):
     try:
       items=candidates(tuple(box),when.isoformat())
       if not items: raise HTTPException(404,'Подходящий снимок Sentinel-2 не найден рядом с '+when.isoformat())
-      coords=','.join(str(float(x)) for x in box)
-      endpoint=f'{TILER}/{coords}/{width}x{height}.tif'
+      # The model was trained with spatial context. Extend small requests to a
+      # full 256-pixel scene instead of repeating the area edge during inference.
+      ctx_width=max(256,width);ctx_height=max(256,height)
+      left=(ctx_width-width)//2;top=(ctx_height-height)//2
+      dx=(box[2]-box[0])/width;dy=(box[3]-box[1])/height
+      context_box=(box[0]-left*dx,box[1]-(ctx_height-height-top)*dy,box[2]+(ctx_width-width-left)*dx,box[3]+top*dy)
+      if context_box[0]<-180 or context_box[2]>180 or context_box[1]<-90 or context_box[3]>90:
+        context_box=box;ctx_width=width;ctx_height=height;left=top=0
+      coords=','.join(str(float(x)) for x in context_box)
+      endpoint=f'{TILER}/{coords}/{ctx_width}x{ctx_height}.tif'
+      composite=None;composite_valid=None;observations=[];used_dates=set()
       read_failures=0
       decoded_scenes=0
-      for item in items[:3]:
+      for item in items[:6]:
+        acquired=item.datetime.date().isoformat()
+        if acquired in used_dates: continue
+        if len(observations)>=2: break
         def read_band(name):
           raw=item.assets[name].href
           if raw.startswith('s3://sentinel-s2-l2a/'):
@@ -53,7 +65,7 @@ def fetch(box,when,width,height):
           try:
             with rasterio.Env(GDAL_DISABLE_READDIR_ON_OPEN='EMPTY_DIR', GDAL_HTTP_TIMEOUT='90', GDAL_HTTP_MAX_RETRY='2'):
               with rasterio.open(raw) as src:
-                with WarpedVRT(src,crs='EPSG:4326',transform=from_bounds(*box,width,height),width=width,height=height,resampling=rasterio.enums.Resampling.nearest) as vrt:
+                with WarpedVRT(src,crs='EPSG:4326',transform=from_bounds(*context_box,ctx_width,ctx_height),width=ctx_width,height=ctx_height,resampling=rasterio.enums.Resampling.nearest) as vrt:
                   return vrt.read(1)
           except Exception:
             logging.warning('Direct archive read failed; trying image service',exc_info=True)
@@ -68,15 +80,26 @@ def fetch(box,when,width,height):
           logging.warning('Unable to read one scene, trying another',exc_info=True)
           continue
         decoded_scenes+=1
-        if bands.shape!=(13,height,width): raise ValueError('Неверные размеры каналов')
-        valid=np.all(bands>0,axis=0)
-        if valid.mean()<.2: continue
+        if bands.shape!=(13,ctx_height,ctx_width): raise ValueError('Invalid band dimensions')
+        data_valid=np.all(bands>0,axis=0)
         baseline=float(item.properties.get('s2:processing_baseline','0'))
         offset=1000 if baseline>=4 else 0
         mask=landcover.predict(bands,offset)
-        valid &= mask!=7
-        if valid.mean()<.2:continue
-        return mask,valid,{'item':item.id,'date':item.datetime.date().isoformat(),'satellite':'Sentinel-2 L1C','cloud_cover_scene_percent':item.properties.get('eo:cloud_cover'),'valid_percent':round(float(valid.mean())*100,2),'model':'Blue Marble Landcover medium','imagery_access':'AWS Sentinel-2 L1C archive','baseline':str(item.properties.get('s2:processing_baseline','unknown'))}
+        region=np.s_[top:top+height,left:left+width]
+        mask=mask[region];valid=data_valid[region] & (mask!=7)
+        if not valid.any(): continue
+        if composite is None:
+          composite=mask.copy();composite_valid=valid.copy();new_pixels=valid
+        else:
+          new_pixels=valid & ~composite_valid
+          if not new_pixels.any(): continue
+          composite[new_pixels]=mask[new_pixels];composite_valid |= valid
+        used_dates.add(acquired)
+        observations.append({'date':acquired,'item':item.id,'added_percent':round(float(new_pixels.mean())*100,2),'cloud_cover_scene_percent':item.properties.get('eo:cloud_cover')})
+        if composite_valid.mean()>=.98:break
+      if composite is not None and composite_valid.mean()>=.2:
+        first=observations[0]
+        return composite,composite_valid,{'item':first['item'],'date':first['date'],'satellite':'Sentinel-2 L1C','cloud_cover_scene_percent':first['cloud_cover_scene_percent'],'valid_percent':round(float(composite_valid.mean())*100,2),'model':'Blue Marble Landcover medium','imagery_access':'AWS Sentinel-2 L1C archive','observations':observations,'composite':len(observations)>1}
       if read_failures and not decoded_scenes:
         raise HTTPException(503,'Не удалось получить снимки из внешнего сервиса. Это ошибка источника данных, а не обязательно облачность. Попробуйте позже или выберите другую дату.')
       if read_failures:

@@ -54,6 +54,10 @@ def build_report(result,exports,language='en'):
     period=' — '.join([x['date'] for x in result['scenes']] if forest else map(str,result['years']))
     heading='Изменение леса' if forest else 'Покрытие территории'
     story=[Paragraph(tr('ДАННЫЕ НАБЛЮДЕНИЯ ЗЕМЛИ'),SM),Spacer(1,5*mm),Paragraph(tr(heading),TITLE),Spacer(1,3*mm),Paragraph(txt(period),P),Spacer(1,4*mm)]
+    observations=result.get('scenes_metadata',[]) if not forest else []
+    if any(len(x.get('observations',[]))>1 for x in observations):
+        periods=[' / '.join(y['date'] for y in x.get('observations',[])) for x in observations]
+        story.extend([Paragraph(('Composite acquisition dates: ' if language=='en' else 'Даты снимков в мозаике: ')+txt(' — '.join(periods)),SM),Spacer(1,3*mm)])
     b=result['bbox']; coordinates=', '.join(f'{x:.5f}' for x in b)
     source='Landsat / Sentinel-2; ML-Project' if forest else result['source']['name']
     metadata=[[Paragraph(tr('ПЛОЩАДЬ АНАЛИЗА'),SM),Paragraph(tr('ДОСТУПНЫЕ ДАННЫЕ'),SM),Paragraph(tr('ИСТОЧНИК'),SM)],[Paragraph(number(result['area_ha'])+tr(' га'),HD),Paragraph(number(result['common_coverage_percent'] if forest else result['coverage_percent'])+' %',HD),Paragraph(txt(source),CELL)]]

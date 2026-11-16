@@ -20,6 +20,8 @@ class CoverSceneTests(unittest.TestCase):
         with patch('cover_scene.fetch',side_effect=fetch):
             response=self.client.post('/api/v2/cover',json=self.body)
         self.assertEqual(response.status_code,200,response.text)
+        self.assertEqual(response.json()['selected_area_ha'],response.json()['area_ha'])
+        self.assertEqual(response.json()['unobserved_area_ha'],0)
         rows={r['class']:r for r in response.json()['rows']}
         for category in self.body['categories'][:8]: self.assertGreater(rows[category]['before_ha'],0,category)
         self.assertGreater(rows['forest_loss']['area_ha'],0)
@@ -41,12 +43,28 @@ class CoverSceneTests(unittest.TestCase):
         from types import SimpleNamespace
         from fastapi import HTTPException
         import cover_scene
-        item=SimpleNamespace(assets={band:SimpleNamespace(href='s3://sentinel-s2-l1c/test.jp2') for band in cover_scene.BANDS})
+        item=SimpleNamespace(datetime=__import__('datetime').datetime(2018,7,1),assets={band:SimpleNamespace(href='s3://sentinel-s2-l1c/test.jp2') for band in cover_scene.BANDS})
         with patch('cover_scene.candidates',return_value=[item]), patch('cover_scene.rasterio.open',side_effect=RuntimeError('archive unavailable')), patch('cover_scene.requests.get',side_effect=RuntimeError('upstream unavailable')):
             with self.assertRaises(HTTPException) as error:
                 cover_scene.fetch((0,0,.01,.01),date(2018,7,1),3,3)
         self.assertEqual(error.exception.status_code,503)
         self.assertNotIn('2018-07-01',error.exception.detail)
+    def test_adjacent_scenes_fill_cloud_gaps_with_context(self):
+        from datetime import date, datetime
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+        import cover_scene
+        def item(day):
+            return SimpleNamespace(id=f'scene-{day}', datetime=datetime(2018,7,day),properties={'s2:processing_baseline':'02.06','eo:cloud_cover':1},assets={band:SimpleNamespace(href='s3://sentinel-s2-l1c/test.jp2') for band in cover_scene.BANDS})
+        source=MagicMock();vrt=MagicMock();vrt.__enter__.return_value.read.return_value=np.full((256,256),1000,dtype=np.uint16)
+        first=np.ones((256,256),dtype=np.uint8);first[126:128,126:130]=7
+        second=np.ones((256,256),dtype=np.uint8)
+        with patch('cover_scene.candidates',return_value=[item(1),item(4)]), patch('cover_scene.rasterio.open',return_value=source), patch('cover_scene.WarpedVRT',return_value=vrt), patch('cover_scene.landcover.predict',side_effect=[first,second]) as predictor:
+            mask,valid,meta=cover_scene.fetch((0,0,.001,.001),date(2018,7,1),4,4)
+        self.assertTrue(valid.all());self.assertTrue((mask==1).all())
+        self.assertEqual([x['date'] for x in meta['observations']],['2018-07-01','2018-07-04'])
+        self.assertEqual(predictor.call_args_list[0].args[0].shape,(13,256,256))
+
     def test_pre_sentinel_date_is_rejected(self):
         self.body['before_date']='2010-01-01'
         self.assertEqual(self.client.post('/api/v2/cover',json=self.body).status_code,422)
