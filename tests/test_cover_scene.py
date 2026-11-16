@@ -36,6 +36,17 @@ class CoverSceneTests(unittest.TestCase):
         pdf=self.client.post('/api/v1/reports/generate',json={'result':result,'categories':['trees','water'],'language':'en'})
         self.assertEqual(pdf.status_code,200,pdf.text[:300]);self.assertTrue(pdf.content.startswith(b'%PDF'))
         self.assertIn(b'/Subtype /Image', pdf.content, 'Map images should appear in the report')
+    def test_upstream_failure_is_not_reported_as_clouds(self):
+        from datetime import date
+        from types import SimpleNamespace
+        from fastapi import HTTPException
+        import cover_scene
+        item=SimpleNamespace(assets={band:SimpleNamespace(href='s3://sentinel-s2-l1c/test.jp2') for band in cover_scene.BANDS})
+        with patch('cover_scene.candidates',return_value=[item]), patch('cover_scene.requests.get',side_effect=RuntimeError('upstream unavailable')):
+            with self.assertRaises(HTTPException) as error:
+                cover_scene.fetch((0,0,.01,.01),date(2018,7,1),3,3)
+        self.assertEqual(error.exception.status_code,503)
+        self.assertNotIn('2018-07-01',error.exception.detail)
     def test_pre_sentinel_date_is_rejected(self):
         self.body['before_date']='2010-01-01'
         self.assertEqual(self.client.post('/api/v2/cover',json=self.body).status_code,422)

@@ -32,6 +32,8 @@ def fetch(box,when,width,height):
       if not items: raise HTTPException(404,'Подходящий снимок Sentinel-2 не найден рядом с '+when.isoformat())
       coords=','.join(str(float(x)) for x in box)
       endpoint=f'{TILER}/{coords}/{width}x{height}.tif'
+      read_failures=0
+      decoded_scenes=0
       for item in items[:3]:
         def read_band(name):
           raw=item.assets[name].href
@@ -49,8 +51,10 @@ def fetch(box,when,width,height):
           with ThreadPoolExecutor(max_workers=4) as pool:
             bands=np.stack(list(pool.map(read_band,BANDS)))
         except Exception:
+          read_failures+=1
           logging.warning('Unable to read one scene, trying another',exc_info=True)
           continue
+        decoded_scenes+=1
         if bands.shape!=(13,height,width): raise ValueError('Неверные размеры каналов')
         valid=np.all(bands>0,axis=0)
         if valid.mean()<.2: continue
@@ -60,7 +64,11 @@ def fetch(box,when,width,height):
         valid &= mask!=7
         if valid.mean()<.2:continue
         return mask,valid,{'item':item.id,'date':item.datetime.date().isoformat(),'satellite':'Sentinel-2 L1C','cloud_cover_scene_percent':item.properties.get('eo:cloud_cover'),'valid_percent':round(float(valid.mean())*100,2),'model':'Blue Marble Landcover medium','baseline':str(item.properties.get('s2:processing_baseline','unknown'))}
-      raise HTTPException(404,'Недостаточно безоблачных пикселей для даты '+when.isoformat())
+      if read_failures and not decoded_scenes:
+        raise HTTPException(503,'Не удалось получить снимки из внешнего сервиса. Это ошибка источника данных, а не обязательно облачность. Попробуйте позже или выберите другую дату.')
+      if read_failures:
+        raise HTTPException(503,'Некоторые снимки не удалось получить, а в остальных недостаточно пригодных пикселей. Попробуйте позже или выберите другую дату.')
+      raise HTTPException(404,'На доступных снимках недостаточно пригодных пикселей для даты '+when.isoformat()+'. Выберите другую дату или область.')
     except HTTPException:raise
     except Exception as exc:
       logging.exception('L1C scene inference failed')
