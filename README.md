@@ -33,7 +33,7 @@ The forest U-Net was trained in Japan and has **not** been independently validat
 
 ## Demo
 
-The [video demonstration](https://terra-observe-app.vercel.app/demo.html), edited with Remotion from a real screen recording, shows an earlier interface and the cursor: select an area and view forest-change imagery. The numerical example is an experimental estimate, not a certified measurement.
+The [video demonstration](https://terra-observe-app.vercel.app/demo.html) shows Terra’s map, land-cover analysis, PDF reports and forest-change workflow. Model outputs are estimates, not certified measurements.
 
 ## Quick start
 
