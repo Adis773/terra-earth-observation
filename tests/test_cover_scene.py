@@ -65,6 +65,20 @@ class CoverSceneTests(unittest.TestCase):
         self.assertEqual([x['date'] for x in meta['observations']],['2018-07-01','2018-07-04'])
         self.assertEqual(predictor.call_args_list[0].args[0].shape,(13,256,256))
 
+    def test_historical_cache_reuses_results_without_shared_mutation(self):
+        from datetime import date
+        import cover_scene
+        cover_scene._cached_fetch.cache_clear()
+        original=(np.ones((2,2),dtype=np.uint8),np.ones((2,2),dtype=bool),{'date':'2018-07-01'})
+        try:
+            with patch('cover_scene._fetch_uncached',return_value=original) as read:
+                mask,valid,meta=cover_scene.fetch([1,2,3,4],date(2018,7,1),2,2)
+                mask[0,0]=0;valid[0,0]=False;meta['date']='changed'
+                mask,valid,meta=cover_scene.fetch([1,2,3,4],date(2018,7,1),2,2)
+                self.assertEqual(read.call_count,1)
+                self.assertEqual(mask[0,0],1);self.assertTrue(valid[0,0]);self.assertEqual(meta['date'],'2018-07-01')
+        finally: cover_scene._cached_fetch.cache_clear()
+
     def test_pre_sentinel_date_is_rejected(self):
         self.body['before_date']='2010-01-01'
         self.assertEqual(self.client.post('/api/v2/cover',json=self.body).status_code,422)

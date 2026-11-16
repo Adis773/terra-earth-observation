@@ -433,8 +433,17 @@ def cover_scene_analysis(body: CoverSceneRequest):
     if body.after_date is None and any(x in ('forest_loss','forest_gain') for x in body.categories):raise HTTPException(422,'Потеря и появление деревьев требуют двух дат')
     geod=Geod(ellps='WGS84');dx=abs(geod.inv(w,(s+n)/2,e,(s+n)/2)[2]);dy=abs(geod.inv(w,s,w,n)[2]);width=max(1,int(np.ceil(dx/10)));height=max(1,int(np.ceil(dy/10)))
     if width*height>262144 or max(width,height)>512:raise HTTPException(422,'Слишком большая область. Выберите участок не больше 512 пикселей по стороне.')
-    a,v1,meta1=cover_scene.fetch(body.bbox,body.before_date,width,height)
-    b,v2,meta2=cover_scene.fetch(body.bbox,body.after_date,width,height) if body.after_date else (None,None,None)
+    if body.after_date and not os.environ.get('VERCEL'):
+        # Local machines can fetch the two dates concurrently. Keep the cloud
+        # path sequential to respect serverless memory and execution limits.
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first=pool.submit(cover_scene.fetch,body.bbox,body.before_date,width,height)
+            second=pool.submit(cover_scene.fetch,body.bbox,body.after_date,width,height)
+            a,v1,meta1=first.result();b,v2,meta2=second.result()
+    else:
+        a,v1,meta1=cover_scene.fetch(body.bbox,body.before_date,width,height)
+        b,v2,meta2=cover_scene.fetch(body.bbox,body.after_date,width,height) if body.after_date else (None,None,None)
     valid=v1.copy()
     if b is not None:valid &= v2
     if valid.mean()<.1:raise HTTPException(422,'Слишком мало общих безоблачных пикселей. Выберите другие даты.')

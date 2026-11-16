@@ -3,7 +3,9 @@ import raster_bootstrap  # Must run before importing rasterio.
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from functools import lru_cache
-import logging, time
+import logging, time, os
+from copy import deepcopy
+from datetime import date
 import numpy as np
 import requests
 import pystac_client
@@ -29,7 +31,18 @@ def candidates(box, date_iso):
     result.sort(key=lambda i:(abs((i.datetime.date()-d).days)//10,i.properties.get('eo:cloud_cover',100),abs((i.datetime.date()-d).days)))
     return result
 
-def fetch(box,when,width,height):
+@lru_cache(maxsize=8)
+def _cached_fetch(box, when, width, height):
+    return _fetch_uncached(box, when, width, height)
+
+def fetch(box, when, width, height):
+    # Cache only historical, successful local analyses; recent imagery can change.
+    args=(tuple(box),when,width,height)
+    use_cache=not os.environ.get('VERCEL') and (date.today()-when).days>90
+    mask,valid,meta=(_cached_fetch(*args) if use_cache else _fetch_uncached(*args))
+    return mask.copy(),valid.copy(),deepcopy(meta)
+
+def _fetch_uncached(box,when,width,height):
     if when.year<2017: raise HTTPException(422,'Для выбранной даты поканальная модель покрытия пока недоступна: Landsat 2010–2016 требует отдельной обученной модели.')
     try:
       items=candidates(tuple(box),when.isoformat())

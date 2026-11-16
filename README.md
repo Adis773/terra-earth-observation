@@ -35,7 +35,7 @@ The [video demonstration](https://terra-observe-app.vercel.app/demo.html), edite
 
 ## Quick start
 
-Requirements: Python 3.10 or newer, Node.js 18 or newer, and internet access. Model weights are downloaded on first inference. On a CPU, image analysis can take several minutes.
+Requirements: Python 3.10 or newer, Node.js 18 or newer, and internet access. Model weights are downloaded on first inference. On a CPU, image analysis can take several minutes. For local date comparisons, the two periods are fetched concurrently. Successful requests for historical scenes are kept in a small in-memory cache until the API restarts; repeated requests can therefore be much faster. Timing depends on imagery, network and hardware.
 
 ```bash
 git clone https://github.com/Adis773/terra-earth-observation.git
