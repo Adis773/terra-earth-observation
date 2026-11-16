@@ -96,9 +96,9 @@ Tests exercise class mapping, tree transitions and date validation. We also ran 
 
 ## Team
 
-- **Name:** _Add team member_
-- **Name:** _Add team member_
-- **Name:** _Add team member_
+- **Viktoria Salieva** — [gaaaarh5@tutamail.com](mailto:gaaaarh5@tutamail.com)
+- **Adis Abenov** — [adisabenov2@gmail.com](mailto:adisabenov2@gmail.com)
+- **Meirkhan Erasyl** — [erslmrkhnss@gmail.com](mailto:erslmrkhnss@gmail.com)
 
 ## Data and acknowledgements
 

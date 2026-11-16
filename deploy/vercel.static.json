@@ -1,1 +1,23 @@
-{"version":2,"framework":null,"outputDirectory":"public","rewrites":[{"source":"/app","destination":"/app.html"},{"source":"/docs","destination":"/app.html"},{"source":"/api/:path*","destination":"https://terra-earth-observation-hack26.vercel.app/api/:path*"}]}
+{
+  "version": 2,
+  "framework": null,
+  "outputDirectory": "public",
+  "rewrites": [
+    {
+      "source": "/api/v1/reports/generate",
+      "destination": "https://terra-reports-api.vercel.app/api/v1/reports/generate"
+    },
+    {
+      "source": "/app",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/docs",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "https://terra-earth-observation-hack26.vercel.app/api/:path*"
+    }
+  ]
+}

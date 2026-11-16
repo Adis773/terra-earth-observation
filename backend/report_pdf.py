@@ -1,12 +1,12 @@
 """Terra report: compact branded PDF generated from the analysis result."""
-import io, os
+import io, os, base64
 from datetime import datetime
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.colors import HexColor, Color
 from reportlab.lib.utils import ImageReader
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, KeepTogether
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, KeepTogether, PageBreak
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.enums import TA_RIGHT
 from reportlab.lib.units import mm
@@ -64,7 +64,7 @@ def build_report(result,exports,language='en'):
         imgs=[]
         for name,label in [('before','До'),('after','После'),('loss','Потеря деревьев')]:
             key=result['images'][name].split('/')[-1].removesuffix('.png');raw=exports.get(key)
-            if raw: imgs.append([Image(io.BytesIO(raw),width=35*mm,height=35*mm,kind='proportional'),Paragraph(tr(label),SM)])
+            if raw: imgs.append([Image(io.BytesIO(raw),width=50*mm,height=50*mm,kind='proportional'),Paragraph(tr(label),SM)])
         if len(imgs)==3:
             story.extend([Paragraph(tr('Снимки и результат'),HD),Spacer(1,3*mm),Table([[x[0] for x in imgs],[x[1] for x in imgs]],colWidths=[W/3]*3,hAlign='LEFT',style=TableStyle([('VALIGN',(0,0),(-1,-1),'TOP'),('LEFTPADDING',(0,0),(-1,-1),0)])),Spacer(1,3*mm)])
         n=result['ndvi'];story.extend([Paragraph(('NDVI in loss area: ' if language=='en' else 'NDVI в зоне потери: ')+number(n['before_loss'])+' → '+number(n['after_loss']),P),Spacer(1,3*mm)])
@@ -78,4 +78,37 @@ def build_report(result,exports,language='en'):
         widths=[W*.4,W*.2,W*.2,W*.2] if compare else [W*.5,W*.25,W*.25]
         story.extend([Paragraph(tr('Результаты анализа'),HD),Spacer(1,3*mm),table([[Paragraph(txt(tr(x)),CELL if j==0 else RIGHT) for j,x in enumerate(row)] for row in data],widths),Spacer(1,7*mm)])
     story.extend([Paragraph(tr('Примечание'),HD),Spacer(1,2*mm),Paragraph(txt(('Model estimates may be inaccurate. Clouds, seasonality, mixed pixels and regional differences can affect the result. Tree loss is not proof of deforestation.' if language=='en' else result['warning'])),SM),Spacer(1,4*mm),Table([[Paragraph('<font name="TerraBold" size="11">terra.</font><br/>'+tr('Подготовлено Terra')+'<br/>'+datetime.now().strftime('%d.%m.%Y'),SM),seal()]],colWidths=[W-80,80],style=TableStyle([('VALIGN',(0,0),(-1,-1),'MIDDLE'),('ALIGN',(1,0),(1,0),'RIGHT'),('LEFTPADDING',(0,0),(-1,-1),0)]))])
+    if not forest and result.get('map_overlays'):
+        from PIL import Image as PILImage
+        colors={'water':'#3187b8','trees':'#2f8952','flooded_vegetation':'#8969ae','crops':'#e0b03d','built_up':'#c55048','bare_ground':'#af8358','snow_ice':'#b8cbd7','rangeland':'#97b458','forest_loss':'#e63f36','forest_gain':'#2db472'}
+        selected={row.get('class') for row in result['rows']}
+        panels=[]
+        for phase,title in [('before','До'),('after','После'),('change','Изменения')]:
+            layers=result['map_overlays'].get(phase,{})
+            if not isinstance(layers,dict): raise ValueError('Invalid map layers')
+            composite=None
+            for category,uri in layers.items():
+                if category not in selected or not uri: continue
+                if category not in colors or not isinstance(uri,str) or not uri.startswith('data:image/png;base64,') or len(uri)>1800000: raise ValueError('Invalid map image')
+                raw=base64.b64decode(uri.split(',',1)[1],validate=True)
+                image=PILImage.open(io.BytesIO(raw))
+                if image.format!='PNG' or image.width*image.height>1048576: raise ValueError('Invalid map size')
+                image=image.convert('RGBA')
+                if composite is None: composite=PILImage.new('RGBA',image.size,(242,244,240,255))
+                if image.size!=composite.size: raise ValueError('Map dimensions differ')
+                composite=PILImage.alpha_composite(composite,image)
+            if composite is not None:
+                output=io.BytesIO();composite.convert('RGB').save(output,format='PNG');output.seek(0)
+                label=({'До':'Before','После':'After','Изменения':'Change'}[title] if language=='en' else title)
+                if phase in ('before','after'): label+=' · '+str(result['years'][0 if phase=='before' else -1])
+                panels.append((label,output))
+        if panels:
+            story.extend([PageBreak(),Paragraph('LAND-COVER MAPS' if language=='en' else 'КАРТЫ ПОКРЫТИЯ',SM),Spacer(1,4*mm),Paragraph('Classification and change' if language=='en' else 'Классификация и изменения',TITLE),Spacer(1,4*mm),Paragraph('Modelled classes within the selected area. Grey areas have no displayed class. These maps are not satellite photographs.' if language=='en' else 'Классы модели в выбранной области. Серым показаны участки без отображаемого класса. Это карты классификации, а не спутниковые снимки.',SM),Spacer(1,5*mm)])
+            for label,output in panels:
+                story.extend([Paragraph(txt(label),HD),Spacer(1,2*mm),Image(output,width=88*mm,height=48*mm,kind='proportional',hAlign='LEFT'),Spacer(1,4*mm)])
+            legend=[]
+            for row in result['rows']:
+                key=row.get('class');color=colors.get(key)
+                if color: legend.append('<font color="'+color+'">&#9632;</font> '+txt(tr(row.get('label',key))))
+            if legend: story.extend([Paragraph('  &nbsp;&nbsp;  '.join(legend),SM),Spacer(1,4*mm)])
     doc.build(story,onFirstPage=decorate,onLaterPages=decorate);return buffer.getvalue()
