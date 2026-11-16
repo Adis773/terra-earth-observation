@@ -1,4 +1,4 @@
-import io, json, logging, threading, uuid
+import io, json, logging, threading, uuid, base64
 from datetime import date
 from functools import lru_cache
 from pathlib import Path
@@ -17,6 +17,39 @@ import landcover
 app = FastAPI(title="Terra API", version="2.0.0", description="Satellite imagery and land-cover estimates. Scene availability and model quality vary by area.")
 from fastapi.middleware.cors import CORSMiddleware
 app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['GET','POST','OPTIONS'], allow_headers=['*'])
+
+# Best-effort per-instance guard. Production services should add shared quotas.
+from collections import OrderedDict
+from fastapi.responses import JSONResponse
+import os, time
+_api_hits=OrderedDict()
+_active_jobs=0
+@app.middleware('http')
+async def guard_api(request, call_next):
+    global _active_jobs
+    path=request.url.path
+    if not path.startswith('/api/'):
+        return await call_next(request)
+    if os.environ.get('VERCEL') and path=='/api/analyze':
+        return JSONResponse({'detail':'The legacy file-upload endpoint is disabled in this deployment.'},status_code=403,headers={'Access-Control-Allow-Origin':'*'})
+    limit=4000000 if path=='/api/v1/reports/generate' else 131072
+    try:size=int(request.headers.get('content-length','0'))
+    except ValueError:return JSONResponse({'detail':'Invalid content length'},status_code=400)
+    if os.environ.get('VERCEL') and size>limit:
+        return JSONResponse({'detail':'Request body too large'},status_code=413,headers={'Access-Control-Allow-Origin':'*'})
+    ip=(request.headers.get('x-forwarded-for','').split(',')[0].strip() or (request.client.host if request.client else 'unknown'))
+    now=time.monotonic();last,count=_api_hits.get(ip,(now,0))
+    if now-last>60:last,count=now,0
+    count+=1;_api_hits[ip]=(last,count);_api_hits.move_to_end(ip)
+    while len(_api_hits)>10000:_api_hits.popitem(last=False)
+    if count>40:return JSONResponse({'detail':'Rate limit exceeded'},status_code=429,headers={'Access-Control-Allow-Origin':'*'})
+    is_job=request.method=='POST' and path in ('/api/v2/cover','/api/v1/forest','/api/v1/analyze')
+    if is_job and _active_jobs>=2:return JSONResponse({'detail':'Analysis capacity reached'},status_code=429,headers={'Access-Control-Allow-Origin':'*'})
+    if is_job:_active_jobs+=1
+    try:return await call_next(request)
+    finally:
+        if is_job:_active_jobs-=1
+
 classes = ["water", "trees", "flooded_vegetation", "crops", "built_up", "bare_ground", "snow_ice", "rangeland"]
 labels = {"water":"Вода", "trees":"Деревья", "flooded_vegetation":"Затопленная растительность", "crops":"Посевы", "built_up":"Застройка", "bare_ground":"Открытая почва", "snow_ice":"Снег и лёд", "rangeland":"Травянистая растительность"}
 exports = {}
@@ -213,7 +246,7 @@ def analyze_automatic(body: AreaRequest):
         rows.append({'class':name,'label':label,'area_ha':round(area,3),'percent':round(area/total*100,2)})
       else:
         h1=hectares(valid&(a==code));h2=hectares(valid&(b==code)) if b is not None else None
-        rows.append({'class':name,'label':label,'before_ha':round(h1,3),'before_percent':round(h1/total*100,2),'after_ha':round(h2,3) if h2 is not None else None,'after_percent':round(h2/total*100,2) if h2 is not None else None,'change_ha':round(h2-h1,3) if h2 is not None else None,'relative_change_percent':round((h2-h1)/h1*100,2) if h2 is not None and h1 else None})
+        rows.append({'class':name,'label':label,'before_ha':round(h1,3),'before_percent':round(h1/total*100,2),'after_ha':round(h2,3) if h2 is not None else None,'after_percent':round(h2/total*100,2) if h2 is not None else None,'change_ha':round(h2-h1,3) if h2 is not None else None,'relative_change_percent':round((h2-h1)/h1*100,2) if h2 is not None and h1 else None,'change_percentage_points':round((h2-h1)/total*100,2) if h2 is not None else None})
     out=np.where(valid,b if b is not None else a,0).astype('uint8')
     profile={'driver':'GTiff','height':height,'width':width,'count':1,'dtype':'uint8','crs':'EPSG:4326','transform':raster_from_bounds(*body.bbox,width,height),'nodata':0,'compress':'deflate'}
     with MemoryFile() as m:
@@ -221,7 +254,7 @@ def analyze_automatic(body: AreaRequest):
       tif=m.read()
     key=str(uuid.uuid4());exports[key]=tif
     if len(exports)>20: exports.pop(next(iter(exports)))
-    result = {'bbox':body.bbox,'years':[body.year,body.compare_year] if b is not None else [body.year], 'area_ha':round(total,3),'coverage_percent':round(float(valid.mean())*100,2),'rows':rows,'geotiff_url':'/api/export/'+key+'.tif','source':{'name':'Impact Observatory / Esri Annual Land Cover','collection':COLLECTION,'items':items1+items2,'resolution_m':10,'method':'Годовая классификация Sentinel-2 нейросетью'},'warning':'Годовые оценки деревьев и воды; деревья не всегда лес, вода не обязательно река. Ноль означает, что класс не обнаружен в выбранной области, но не доказывает его отсутствие. Смена класса может быть ошибкой модели.'}
+    result = {'geotiff_base64':base64.b64encode(tif).decode('ascii'),'bbox':body.bbox,'years':[body.year,body.compare_year] if b is not None else [body.year], 'area_ha':round(total,3),'coverage_percent':round(float(valid.mean())*100,2),'rows':rows,'geotiff_url':'/api/export/'+key+'.tif','source':{'name':'Impact Observatory / Esri Annual Land Cover','collection':COLLECTION,'items':items1+items2,'resolution_m':10,'method':'Годовая классификация Sentinel-2 нейросетью'},'warning':'Годовые оценки деревьев и воды; деревья не всегда лес, вода не обязательно река. Ноль означает, что класс не обнаружен в выбранной области, но не доказывает его отсутствие. Смена класса может быть ошибкой модели.'}
     result['report_id']=key; reports[key]=result
     if len(reports)>20: reports.pop(next(iter(reports)))
     return result
@@ -311,7 +344,10 @@ def forest_automatic(body:ForestRequest):
     def rgb(x):return np.clip(np.moveaxis(x[:3],0,2)/4000*255,0,255).astype('uint8')
     pic1,pic2=rgb(a),rgb(b);overlay=pic2.copy();overlay[loss]=(0.35*overlay[loss]+0.65*np.array([240,60,44])).astype('uint8');overlay[~valid]=(0.4*overlay[~valid]).astype('uint8')
     urls={'before':store_png(pic1),'after':store_png(pic2),'loss':store_png(overlay)}
-    result = {'bbox':body.bbox,'model':'ML-Project forest U-Net','scenes':[meta1,meta2],'resolution_m_approx':res,'common_coverage_percent':round(valid.mean()*100,2),'area_ha':area(valid),'forest_before_ha':area(forest1),'forest_after_ha':area(forest2),'forest_loss_ha':area(loss),'forest_stable_ha':area(stable),'ndvi':{'before_loss':mean_or_none(nd1,loss),'after_loss':mean_or_none(nd2,loss),'before_stable':mean_or_none(nd1,stable),'after_stable':mean_or_none(nd2,stable)},'images':urls,'warning':'Модель обучена в Японии и не проверена глобально. Сравнение со снимками Landsat экспериментальное. Красный цвет — предполагаемая потеря деревьев, а не подтверждённая вырубка.'}
+    image_data={}
+    for name,url in urls.items():
+      img_key=url.rsplit('/',1)[-1].removesuffix('.png');image_data[name]='data:image/png;base64,'+base64.b64encode(exports[img_key]).decode('ascii')
+    result = {'images_data':image_data,'bbox':body.bbox,'model':'ML-Project forest U-Net','scenes':[meta1,meta2],'resolution_m_approx':res,'common_coverage_percent':round(valid.mean()*100,2),'area_ha':area(valid),'forest_before_ha':area(forest1),'forest_after_ha':area(forest2),'forest_loss_ha':area(loss),'forest_stable_ha':area(stable),'ndvi':{'before_loss':mean_or_none(nd1,loss),'after_loss':mean_or_none(nd2,loss),'before_stable':mean_or_none(nd1,stable),'after_stable':mean_or_none(nd2,stable)},'images':urls,'warning':'Модель обучена в Японии и не проверена глобально. Сравнение со снимками Landsat экспериментальное. Красный цвет — предполагаемая потеря деревьев, а не подтверждённая вырубка.'}
     key=str(uuid.uuid4()); result['report_id']=key; reports[key]=result
     if len(reports)>20: reports.pop(next(iter(reports)))
     return result
@@ -356,6 +392,26 @@ def available_scenes(bbox: str, year: int):
         logging.exception('Scene search failed');raise HTTPException(503,'Не удалось получить даты съёмки') from e
 
 
+# Small transparent layers keep georeferencing explicit and preserve invalid pixels.
+OVERLAY_COLORS={'water':(49,135,184),'trees':(47,137,82),'flooded_vegetation':(137,105,174),'crops':(224,176,61),'built_up':(197,80,72),'bare_ground':(175,131,88),'snow_ice':(227,238,244),'rangeland':(151,180,88),'forest_loss':(230,63,54),'forest_gain':(45,180,114)}
+
+def build_class_overlays(a,b,valid,categories):
+    codes={'water':0,'trees':1,'flooded_vegetation':2,'crops':3,'built_up':4,'bare_ground':5,'snow_ice':6,'rangeland':8}
+    def make(mask,color):
+        if not mask.any():return None
+        rgba=np.zeros((*mask.shape,4),dtype=np.uint8);rgba[mask,:3]=color;rgba[mask,3]=170
+        buf=io.BytesIO();Image.fromarray(rgba,'RGBA').save(buf,format='PNG',optimize=True)
+        return 'data:image/png;base64,'+base64.b64encode(buf.getvalue()).decode('ascii')
+    result={'before':{},'after':{},'change':{}}
+    for key in categories:
+        if key not in codes:continue
+        result['before'][key]=make(valid&(a==codes[key]),OVERLAY_COLORS[key])
+        if b is not None:result['after'][key]=make(valid&(b==codes[key]),OVERLAY_COLORS[key])
+    if b is not None and any(k in categories for k in ('trees','forest_loss','forest_gain')):
+        result['change']['forest_loss']=make(valid&(a==1)&(b!=1),OVERLAY_COLORS['forest_loss'])
+        result['change']['forest_gain']=make(valid&(a!=1)&(b==1),OVERLAY_COLORS['forest_gain'])
+    return result
+
 # Scene-specific segmentation. Legacy /api/v1/analyze remains an annual-product endpoint.
 class CoverSceneRequest(BaseModel):
     bbox: list[float] = Field(min_length=4,max_length=4)
@@ -389,7 +445,7 @@ def cover_scene_analysis(body: CoverSceneRequest):
         rows.append({'class':category,'label':label,'area_ha':round(h,3),'percent':round(100*h/total,2)})
       else:
         h1=area(valid&(a==codes[category]));h2=area(valid&(b==codes[category])) if b is not None else None
-        rows.append({'class':category,'label':label,'before_ha':round(h1,3),'before_percent':round(h1/total*100,2),'after_ha':round(h2,3) if h2 is not None else None,'after_percent':round(h2/total*100,2) if h2 is not None else None,'change_ha':round(h2-h1,3) if h2 is not None else None,'relative_change_percent':round((h2-h1)/h1*100,2) if h2 is not None and h1 else None})
+        rows.append({'class':category,'label':label,'before_ha':round(h1,3),'before_percent':round(h1/total*100,2),'after_ha':round(h2,3) if h2 is not None else None,'after_percent':round(h2/total*100,2) if h2 is not None else None,'change_ha':round(h2-h1,3) if h2 is not None else None,'relative_change_percent':round((h2-h1)/h1*100,2) if h2 is not None and h1 else None,'change_percentage_points':round((h2-h1)/total*100,2) if h2 is not None else None})
     out=np.where(valid,b if b is not None else a,255).astype('uint8')
     profile={'driver':'GTiff','height':height,'width':width,'count':1,'dtype':'uint8','crs':'EPSG:4326','transform':raster_from_bounds(*body.bbox,width,height),'nodata':255,'compress':'deflate'}
     with MemoryFile() as mem:
@@ -398,7 +454,8 @@ def cover_scene_analysis(body: CoverSceneRequest):
     key=str(uuid.uuid4());exports[key]=tif
     if len(exports)>20:exports.pop(next(iter(exports)))
     actual=[meta1['date']]+([meta2['date']] if meta2 else [])
-    result={'bbox':body.bbox,'years':actual,'scenes_metadata':[x for x in [meta1,meta2] if x],'area_ha':round(total,3),'coverage_percent':round(float(valid.mean())*100,2),'rows':rows,'geotiff_url':'/api/export/'+key+'.tif','report_id':key,'source':{'name':'Blue Marble Landcover / Sentinel-2 L1C','resolution_m':10,'method':'Классификация отдельных спутниковых снимков','items':[x['item'] for x in [meta1,meta2] if x]},'warning':'Оценка нейросети для отдельных снимков; облака определяются моделью и могут быть пропущены. Деревья не обязательно лес. Сезонность и ошибки модели влияют на сравнение. Достоверность отдельных классов зависит от региона.'}
+    overlays=build_class_overlays(a,b,valid,body.categories)
+    result={'geotiff_base64':base64.b64encode(tif).decode('ascii'),'map_overlays':overlays,'bbox':body.bbox,'years':actual,'scenes_metadata':[x for x in [meta1,meta2] if x],'area_ha':round(total,3),'coverage_percent':round(float(valid.mean())*100,2),'rows':rows,'geotiff_url':'/api/export/'+key+'.tif','report_id':key,'source':{'name':'Blue Marble Landcover / Sentinel-2 L1C','resolution_m':10,'method':'Классификация отдельных спутниковых снимков','items':[x['item'] for x in [meta1,meta2] if x]},'warning':'Оценка нейросети для отдельных снимков; облака определяются моделью и могут быть пропущены. Деревья не обязательно лес. Сезонность и ошибки модели влияют на сравнение. Достоверность отдельных классов зависит от региона.'}
     reports[key]=result
     if len(reports)>20:reports.pop(next(iter(reports)))
     return result
@@ -410,3 +467,35 @@ def api_openapi():return app.openapi()
 def api_documentation():
     from fastapi.openapi.docs import get_swagger_ui_html
     return get_swagger_ui_html(openapi_url='/api/openapi.json',title='Terra API')
+
+
+class PortableReportRequest(BaseModel):
+    result: dict
+    categories: list[str] | None = Field(default=None,max_length=10)
+    language: str = 'en'
+
+@app.post('/api/v1/reports/generate',tags=['Экспорт'])
+def portable_report(body:PortableReportRequest):
+    from report_pdf import build_report
+    from copy import deepcopy
+    result=deepcopy(body.result)
+    if not isinstance(result.get('bbox'),list) or len(result['bbox'])!=4 or 'area_ha' not in result:raise HTTPException(422,'Invalid report data')
+    if 'rows' in result:
+      if not isinstance(result['rows'],list) or len(result['rows'])>10:raise HTTPException(422,'Invalid report rows')
+      if body.categories is not None:
+        selected=set(body.categories);result['rows']=[r for r in result['rows'] if r.get('class') in selected]
+    elif 'scenes' not in result:raise HTTPException(422,'Unsupported report type')
+    image_store={}
+    if 'scenes' in result:
+      for name,uri in result.get('images_data',{}).items():
+        if name not in ('before','after','loss') or not isinstance(uri,str) or not uri.startswith('data:image/png;base64,') or len(uri)>1800000:raise HTTPException(422,'Invalid report image')
+        try: raw=base64.b64decode(uri.split(',',1)[1],validate=True)
+        except Exception:raise HTTPException(422,'Invalid image encoding')
+        if not raw.startswith(b'\x89PNG\r\n\x1a\n'):raise HTTPException(422,'Invalid PNG image')
+        image_store[name]=raw
+      result['images']={name:'/api/v1/image/'+name+'.png' for name in image_store}
+    try:pdf=build_report(result,image_store,body.language if body.language in ('en','ru') else 'en')
+    except (KeyError,TypeError,ValueError):raise HTTPException(422,'Incomplete or invalid report data')
+    except Exception as exc:
+      logging.exception('Portable PDF generation failed');raise HTTPException(500,'Could not generate report') from exc
+    return Response(pdf,media_type='application/pdf',headers={'Content-Disposition':'attachment; filename="terra-report.pdf"'})

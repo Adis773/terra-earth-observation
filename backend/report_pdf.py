@@ -17,8 +17,8 @@ from pathlib import Path
 FONT_DIR=Path(os.environ.get('WINDIR','C:/Windows'))/'Fonts'
 REG=FONT_DIR/'arial.ttf'; BOLD=FONT_DIR/'arialbd.ttf'
 if not REG.exists():
-    REG=Path('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf')
-    BOLD=Path('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf')
+    REG=Path(__file__).parent/'fonts'/'DejaVuSans.ttf'
+    BOLD=Path(__file__).parent/'fonts'/'DejaVuSans-Bold.ttf'
 pdfmetrics.registerFont(TTFont('Terra',str(REG)));pdfmetrics.registerFont(TTFont('TerraBold',str(BOLD)))
 BLACK=HexColor('#171916');GRAY=HexColor('#6d716b');LIGHT=HexColor('#eceee9')
 P=ParagraphStyle('body',fontName='Terra',fontSize=9,leading=14,textColor=BLACK)
@@ -33,9 +33,9 @@ def number(v):
 
 def decorate(c,doc):
     width,height=A4;c.setStrokeColor(HexColor('#dadcd7'));c.line(23*mm,height-23*mm,width-23*mm,height-23*mm)
-    c.setFont('TerraBold',17);c.setFillColor(BLACK);c.drawString(23*mm,height-19*mm,'terra.')
+    c.setFillColor(BLACK);c.setStrokeColor(BLACK);c.setLineWidth(1.3);c.circle(23*mm+6,height-19*mm+6,5,stroke=1,fill=0);c.circle(23*mm+6,height-19*mm+6,2.4,stroke=0,fill=1);c.setFont('TerraBold',17);c.drawString(23*mm+16,height-19*mm,'terra.')
     c.setFont('Terra',7);c.setFillColor(GRAY);c.drawRightString(width-23*mm,height-18*mm,'ANALYTICAL REPORT' if getattr(doc,'report_lang','en')=='en' else 'АНАЛИТИЧЕСКИЙ ОТЧЁТ')
-    c.line(23*mm,19*mm,width-23*mm,19*mm);c.setFont('TerraBold',9);c.setFillColor(BLACK);c.drawString(23*mm,13*mm,'terra.')
+    c.line(23*mm,19*mm,width-23*mm,19*mm);c.setFont('TerraBold',9);c.setFillColor(BLACK);c.setLineWidth(.8);c.circle(23*mm+3,13*mm+3,3,stroke=1,fill=0);c.circle(23*mm+3,13*mm+3,1.4,stroke=0,fill=1);c.drawString(23*mm+10,13*mm,'terra.')
     c.setFont('Terra',7);c.setFillColor(GRAY);c.drawRightString(width-23*mm,13*mm,f'{doc.page}')
 
 def seal():
@@ -70,12 +70,12 @@ def build_report(result,exports,language='en'):
         n=result['ndvi'];story.extend([Paragraph(('NDVI in loss area: ' if language=='en' else 'NDVI в зоне потери: ')+number(n['before_loss'])+' → '+number(n['after_loss']),P),Spacer(1,3*mm)])
     else:
         compare=len(result['years'])==2
-        data=[['Категория',str(result['years'][0])+', га',str(result['years'][-1])+', га','Изм., га'] if compare else ['Категория','Площадь, га','Доля, %']]
+        data=[['Категория',str(result['years'][0])+(', ha' if language=='en' else ', га'),str(result['years'][-1])+(', ha' if language=='en' else ', га'),'Изм., га'] if compare else ['Категория','Площадь, га','Доля, %']]
         for r in result['rows']:
             if 'area_ha' in r:data.append([r['label'],'—','—',number(r['area_ha'])])
             elif compare:data.append([r['label'],('Не обнаружено' if r['class']=='trees' and r['before_ha']==0 else number(r['before_ha'])),('Не обнаружено' if r['class']=='trees' and r['after_ha']==0 else number(r['after_ha'])),number(r['change_ha'])])
             else:data.append([r['label'],('Не обнаружено' if r['class']=='trees' and r['before_ha']==0 else number(r['before_ha'])),number(r['before_percent'])])
         widths=[W*.4,W*.2,W*.2,W*.2] if compare else [W*.5,W*.25,W*.25]
         story.extend([Paragraph(tr('Результаты анализа'),HD),Spacer(1,3*mm),table([[Paragraph(txt(tr(x)),CELL if j==0 else RIGHT) for j,x in enumerate(row)] for row in data],widths),Spacer(1,7*mm)])
-    story.extend([Paragraph(tr('Примечание'),HD),Spacer(1,2*mm),Paragraph(txt(('Model estimates may be inaccurate. Clouds, seasonality, mixed pixels and regional differences can affect the result. Tree loss is not proof of deforestation.' if language=='en' else result['warning'])),SM),Spacer(1,4*mm),Table([[Paragraph(tr('Подготовлено Terra')+'<br/>'+datetime.now().strftime('%d.%m.%Y'),SM),seal()]],colWidths=[W-80,80],style=TableStyle([('VALIGN',(0,0),(-1,-1),'MIDDLE'),('ALIGN',(1,0),(1,0),'RIGHT'),('LEFTPADDING',(0,0),(-1,-1),0)]))])
+    story.extend([Paragraph(tr('Примечание'),HD),Spacer(1,2*mm),Paragraph(txt(('Model estimates may be inaccurate. Clouds, seasonality, mixed pixels and regional differences can affect the result. Tree loss is not proof of deforestation.' if language=='en' else result['warning'])),SM),Spacer(1,4*mm),Table([[Paragraph('<font name="TerraBold" size="11">terra.</font><br/>'+tr('Подготовлено Terra')+'<br/>'+datetime.now().strftime('%d.%m.%Y'),SM),seal()]],colWidths=[W-80,80],style=TableStyle([('VALIGN',(0,0),(-1,-1),'MIDDLE'),('ALIGN',(1,0),(1,0),'RIGHT'),('LEFTPADDING',(0,0),(-1,-1),0)]))])
     doc.build(story,onFirstPage=decorate,onLaterPages=decorate);return buffer.getvalue()

@@ -6,7 +6,7 @@
 
 Satellite imagery, land-cover estimates and forest-change analysis in one map.
 
-[Watch the demo](assets/demo.mp4) · [API guide](docs/API.md) · [Interactive API](https://barrier-norman-theaters-bouquet.trycloudflare.com/api/docs) · [Live demo](https://barrier-norman-theaters-bouquet.trycloudflare.com/)
+[Watch the demo](assets/demo.mp4) · [API guide](docs/API.md) · [Interactive API](https://terra-earth-observation-hack26.vercel.app/api/docs) · [Live demo](https://terra-earth-observation-hack26.vercel.app/)
 
 [![Terra demonstration](assets/demo-cover.png)](assets/demo.mp4)
 
@@ -14,14 +14,14 @@ Satellite imagery, land-cover estimates and forest-change analysis in one map.
 
 ## The idea
 
-Terra helps people explore changes across a selected area. Draw a rectangle, choose acquisition dates and categories, and compare estimates in hectares. Export a PDF report, CSV, GeoJSON or GeoTIFF for further work.
+Terra helps people explore changes across a selected area. Draw a rectangle, choose acquisition dates and categories, and compare estimates in hectares. View before, after and change overlays on the map, then export a PDF report, CSV, GeoJSON or GeoTIFF for further work.
 
 The app has two analysis paths:
 
 - **Land cover:** classifies Sentinel-2 L1C scenes with Blue Marble Landcover. It reports water, trees, flooded vegetation, crops, built area, bare ground, snow/ice and rangeland, plus changes in tree class.
 - **Forest change:** runs the U-Net checkpoint from the supplied ML-Project on Landsat or Sentinel-2 scenes. It returns before/after images, a loss overlay, coverage and NDVI summaries.
 
-The interface is English by default and includes a Russian language switch. The API is available without an account at the temporary live URL above. **The live URL is an experimental tunnel to a local machine: it may stop when the machine or tunnel stops, and is not a production SLA.**
+The interface is English by default and includes a Russian language switch. The site and API run on Vercel independently of your local computer. Free-tier quotas, cold starts, upstream imagery availability and platform uptime still apply.
 
 ## Important interpretation
 
@@ -54,7 +54,7 @@ In a second terminal at the repository root:
 node server.js
 ```
 
-Open <http://localhost:3187>. The FastAPI backend is served separately on port 60372. See the [API guide](docs/API.md) for requests and response examples.
+Open <http://localhost:3187> and select **Explore the map**. The FastAPI backend is served separately on port 60372. See the [API guide](docs/API.md) for requests and response examples.
 
 ### Docker
 
@@ -68,12 +68,12 @@ The container serves the interface and proxies requests to its Python process. P
 ## API at a glance
 
 ```bash
-curl -X POST https://barrier-norman-theaters-bouquet.trycloudflare.com/api/v2/cover \
+curl -X POST https://terra-earth-observation-hack26.vercel.app/api/v2/cover \
   -H "Content-Type: application/json" \
   -d '{"bbox":[65.46,44.84,65.463,44.843],"before_date":"2023-07-09","after_date":"2026-07-01","categories":["trees","water"]}'
 ```
 
-Coordinates are `[west, south, east, north]` in WGS84. For a single snapshot, omit `after_date`. A temporary public API and [OpenAPI UI](https://barrier-norman-theaters-bouquet.trycloudflare.com/api/docs) are available while the host is online. For a stable deployment, host the container on your own infrastructure, add authentication and quotas if appropriate, and set up monitoring and persistent storage.
+Coordinates are `[west, south, east, north]` in WGS84. For a single snapshot, omit `after_date`. The public API and [OpenAPI UI](https://terra-earth-observation-hack26.vercel.app/api/docs) are hosted on Vercel. For production, add shared rate limits, authentication if appropriate, monitoring, persistent storage and independently validated models.
 
 ## Architecture
 
@@ -84,7 +84,7 @@ Browser / Node.js proxy
         └── FastAPI ── Microsoft Planetary Computer ── Landsat / Sentinel-2 ── forest U-Net
 ```
 
-Geodesic pixel-area calculations use WGS84. Valid data must overlap between the compared scenes. Coordinates are shared with remote providers when finding and cropping imagery. The first inference downloads model weights from Hugging Face. Report images and exports are stored only in server memory and may expire after a restart.
+Geodesic pixel-area calculations use WGS84. Valid data must overlap between the compared scenes. Coordinates are shared with remote providers when finding and cropping imagery. The first inference downloads model weights from Hugging Face. The interface uses portable inline data for class overlays, GeoTIFF and forest images, and generates PDF reports from the result payload so that downloads also work across serverless instances. Legacy URL-based exports are temporary.
 
 ## Testing
 

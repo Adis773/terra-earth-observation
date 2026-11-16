@@ -24,6 +24,17 @@ class CoverSceneTests(unittest.TestCase):
         for category in self.body['categories'][:8]: self.assertGreater(rows[category]['before_ha'],0,category)
         self.assertGreater(rows['forest_loss']['area_ha'],0)
         self.assertEqual(rows['forest_gain']['area_ha'],0)
+        self.assertIsNotNone(rows['trees']['change_percentage_points'])
+        overlays=response.json()['map_overlays']
+        self.assertTrue(overlays['before']['water'].startswith('data:image/png;base64,'))
+        self.assertTrue(overlays['change']['forest_loss'].startswith('data:image/png;base64,'))
+        self.assertIsNone(overlays['change']['forest_gain'])
+        import base64
+        self.assertTrue(base64.b64decode(response.json()['geotiff_base64']).startswith((b'II',b'MM')))
+        result=response.json();result.pop('map_overlays');result.pop('geotiff_base64')
+        app.exports.clear();app.reports.clear()
+        pdf=self.client.post('/api/v1/reports/generate',json={'result':result,'categories':['trees','water'],'language':'en'})
+        self.assertEqual(pdf.status_code,200,pdf.text[:300]);self.assertTrue(pdf.content.startswith(b'%PDF'))
     def test_pre_sentinel_date_is_rejected(self):
         self.body['before_date']='2010-01-01'
         self.assertEqual(self.client.post('/api/v2/cover',json=self.body).status_code,422)

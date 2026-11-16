@@ -1,6 +1,6 @@
 # Terra API
 
-The API accepts JSON and returns JSON with a UTF-8 content type. The experimental public endpoint is `https://barrier-norman-theaters-bouquet.trycloudflare.com`. It is hosted through a temporary tunnel and can go offline. For local use substitute `http://localhost:3187`. Open [Swagger UI](https://barrier-norman-theaters-bouquet.trycloudflare.com/api/docs) for the current generated schema.
+The API accepts JSON and returns JSON with a UTF-8 content type. The public endpoint is `https://terra-earth-observation-hack26.vercel.app`. It runs on the Vercel free tier, subject to usage limits, cold starts and upstream availability. For local use substitute `http://localhost:3187`. Open [Swagger UI](https://terra-earth-observation-hack26.vercel.app/api/docs) for the current generated schema.
 
 ## Before you start
 
@@ -9,8 +9,8 @@ The API accepts JSON and returns JSON with a UTF-8 content type. The experimenta
 - Coverage is the percentage of common valid, cloud-masked pixels. Area is geodesically calculated and reported in hectares.
 - Date-based analysis is limited to 512 pixels per side and 262,144 pixels total. Smaller areas and cloud-free scenes work best.
 - `null` relative change means the baseline was zero. It is not a 0% change.
-- Analysis can take minutes. Exports are temporary in-memory objects and disappear on restart or eviction.
-- No API key is currently required. The demo proxy limits requests and concurrent analyses. Treat it as a prototype, not a production service.
+- Analysis can take minutes. `geotiff_base64`, `images_data`, and `map_overlays` are portable inline data. Legacy URL exports are temporary and can disappear on restart or when requests reach different server instances.
+- No API key is currently required. The service applies best-effort per-instance request and concurrency limits; these are not distributed production quotas. Treat it as a prototype, not a production service.
 
 ## Health
 
@@ -39,7 +39,7 @@ Returns acquisition dates and scene-level cloud cover. It uses Landsat before 20
 }
 ```
 
-`after_date` is optional for a single image; omit derived transition categories in that case. Only dates from 2017 are supported in this endpoint. Returns `years` (actual scene dates), `scenes_metadata`, `coverage_percent`, `area_ha`, `rows`, `geotiff_url`, `report_id`, `source`, and `warning`. Each normal row includes `before_ha`, `before_percent`, `after_ha`, `after_percent`, `change_ha` and `relative_change_percent`. Transition rows include `area_ha` and `percent` of common valid area.
+`after_date` is optional for a single image; omit derived transition categories in that case. Only dates from 2017 are supported in this endpoint. Returns `years` (actual scene dates), `scenes_metadata`, `coverage_percent`, `area_ha`, `rows`, `geotiff_url`, `geotiff_base64`, `map_overlays`, `report_id`, `source`, and `warning`. `map_overlays` contains transparent PNG data URLs keyed by selected class and by `before`, `after`, or `change`. Each normal row includes `before_ha`, `before_percent`, `after_ha`, `after_percent`, `change_ha` and `relative_change_percent`. Transition rows include `area_ha` and `percent` of common valid area.
 
 GeoTIFF pixels: 0 water, 1 trees, 2 flooded vegetation, 3 crops, 4 built area, 5 bare ground, 6 snow/ice, 8 rangeland, 255 NoData. The model's cloud class is excluded. The export shows the latest analysed scene, not a transition map.
 
@@ -48,7 +48,7 @@ GeoTIFF pixels: 0 water, 1 trees, 2 flooded vegetation, 3 crops, 4 built area, 5
 ```python
 import requests
 
-base = "https://barrier-norman-theaters-bouquet.trycloudflare.com"
+base = "https://terra-earth-observation-hack26.vercel.app"
 payload = {
     "bbox": [65.46, 44.84, 65.463, 44.843],
     "before_date": "2023-07-09",
@@ -77,13 +77,16 @@ Requests are synchronous. A 300-second client timeout is recommended for the dat
 }
 ```
 
-Returns acquisition dates and scene metadata, `forest_before_ha`, `forest_after_ha`, estimated `forest_loss_ha`, `forest_stable_ha`, NDVI summaries and `images` URLs. Landsat is used before 2017, Sentinel-2 afterwards. The Japan-trained forest model has not been validated globally; Landsat use is experimental. Relative image URLs must be resolved against the API base URL.
+Returns acquisition dates and scene metadata, `forest_before_ha`, `forest_after_ha`, estimated `forest_loss_ha`, `forest_stable_ha`, NDVI summaries, temporary `images` URLs, and portable `images_data` data URLs. Landsat is used before 2017, Sentinel-2 afterwards. The Japan-trained forest model has not been validated globally; Landsat use is experimental. Relative image URLs must be resolved against the API base URL.
 
 ## Historical annual product
 
 `POST /api/v1/analyze` takes `bbox`, `year`, optional `compare_year` and `categories`. It uses the Impact Observatory annual 2017–2023 dataset, not an individual-date model. Output class codes differ from `/api/v2/cover`. Refer to the source metadata and schema before interpreting exports.
 
 ## Export results
+
+For reliable serverless PDF generation, `POST /api/v1/reports/generate` with `{"result": <analysis response>, "categories": ["trees", "water"], "language": "en"}`. Before posting, remove `map_overlays` and `geotiff_base64` from `result` to reduce the request size. For forest results retain `images_data`. This returns `application/pdf` directly. Legacy URL-based exports below are best-effort and may not exist on a different server instance.
+
 
 - `GET /api/export/{id}.tif`: classification GeoTIFF.
 - `GET /api/v1/reports/{report_id}.pdf?categories=trees,water`: PDF report; category filter applies to coverage reports.
