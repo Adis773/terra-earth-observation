@@ -16,6 +16,8 @@ Satellite imagery, land-cover estimates and forest-change analysis in one map.
 
 Terra helps people explore changes across a selected area. Draw a rectangle, choose acquisition dates and categories, and compare estimates in hectares. View before, after and change overlays on the map, then export a PDF report, CSV, GeoJSON or GeoTIFF for further work.
 
+For 2017–2023 land-cover results, **Compare annual map** checks the selected coverage categories against the Impact Observatory / Esri annual map. This is an agreement check between two models using Sentinel-2, not independent ground truth or evidence that individual trees are absent. The annual map covers a whole year; acquisition dates and valid areas may differ. Tree loss and gain are not validated by this check.
+
 The app has two analysis paths:
 
 - **Land cover:** classifies Sentinel-2 L1C scenes with Blue Marble Landcover. It reports water, trees, flooded vegetation, crops, built area, bare ground, snow/ice and rangeland, plus changes in tree class.

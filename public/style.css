@@ -14,3 +14,4 @@
 .language-control{margin-left:auto}
 
 .layer-panel{left:auto;right:18px}
+.reference-check{margin-top:24px;padding-top:20px;border-top:1px solid #e1e5df}.reference-button{border:1px solid #aeb8ae;background:#fff;color:#18221b;padding:11px 15px;border-radius:4px;font:700 12px Manrope,Arial,sans-serif;cursor:pointer}.reference-button:disabled{opacity:.55;cursor:wait}#reference-results h3{font-size:15px;margin:20px 0 8px}#reference-results p{font-size:12px;line-height:1.65;color:#68736a;max-width:700px}#reference-results table{min-width:580px}
