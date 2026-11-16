@@ -1,0 +1,1 @@
+Copy the original recording from `../assets/demo.mp4` to `public/source.mp4`, then run `npm install` and `npm run render`. The video is edited from a real recording of an earlier interface; it is not a new capture.

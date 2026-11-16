@@ -1,0 +1,1 @@
+{"private":true,"scripts":{"render":"remotion render index.jsx TerraDemo ../public/demo-remotion.mp4 --public-dir=public"},"dependencies":{"@remotion/cli":"4.0.543","react":"19.3.1","react-dom":"19.3.1","remotion":"4.0.543"}}

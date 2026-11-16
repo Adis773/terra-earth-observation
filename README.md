@@ -6,9 +6,9 @@
 
 Satellite imagery, land-cover estimates and forest-change analysis in one map.
 
-[Watch the demo](assets/demo.mp4) · [API guide](docs/API.md) · [Interactive API](https://terra-earth-observation-hack26.vercel.app/api/docs) · [Live demo](https://terra-earth-observation-hack26.vercel.app/)
+[Watch the demo](https://terra-observe.vercel.app/demo.html) · [API guide](docs/API.md) · [Interactive API](https://terra-observe.vercel.app/api/docs) · [Live demo](https://terra-observe.vercel.app/)
 
-[![Terra demonstration](assets/demo-cover.png)](assets/demo.mp4)
+[![Terra demonstration — click to play](assets/demo-preview.gif)](https://terra-observe.vercel.app/demo.html)
 
 </div>
 
@@ -31,7 +31,7 @@ The forest U-Net was trained in Japan and has **not** been independently validat
 
 ## Demo
 
-The [one-minute screen recording](assets/demo.mp4) shows the actual interface and cursor: search for Atsuma, select forest change, draw an area and view the resulting imagery. The numerical example is an experimental estimate, not a certified measurement.
+The [video demonstration](https://terra-observe.vercel.app/demo.html), edited with Remotion from a real screen recording, shows an earlier interface and the cursor: select an area and view forest-change imagery. The numerical example is an experimental estimate, not a certified measurement.
 
 ## Quick start
 
@@ -68,12 +68,12 @@ The container serves the interface and proxies requests to its Python process. P
 ## API at a glance
 
 ```bash
-curl -X POST https://terra-earth-observation-hack26.vercel.app/api/v2/cover \
+curl -X POST https://terra-observe.vercel.app/api/v2/cover \
   -H "Content-Type: application/json" \
   -d '{"bbox":[65.46,44.84,65.463,44.843],"before_date":"2023-07-09","after_date":"2026-07-01","categories":["trees","water"]}'
 ```
 
-Coordinates are `[west, south, east, north]` in WGS84. For a single snapshot, omit `after_date`. The public API and [OpenAPI UI](https://terra-earth-observation-hack26.vercel.app/api/docs) are hosted on Vercel. For production, add shared rate limits, authentication if appropriate, monitoring, persistent storage and independently validated models.
+Coordinates are `[west, south, east, north]` in WGS84. For a single snapshot, omit `after_date`. The public API and [OpenAPI UI](https://terra-observe.vercel.app/api/docs) are hosted on Vercel. For production, add shared rate limits, authentication if appropriate, monitoring, persistent storage and independently validated models.
 
 ## Architecture
 

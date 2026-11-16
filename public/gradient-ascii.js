@@ -870,6 +870,4 @@ const GradientASCII = ({
 };
 
 const target=document.getElementById('gradient-ascii');
-if(target)createRoot(target).render(React.createElement(GradientASCII,{shape:'eclipse',colors:['#0b0d0b','#646b63','#c8cfc5','#f7faf4'],characters:' .:-=+*#%@',cellSize:14,density:.85,glyphOpacity:.8,glow:.22,flow:.45,speed:.35,gradientOpacity:.36,grain:.04,mouseInteraction:true,clickEffect:'wave'}));
-
-
+if(target)createRoot(target).render(React.createElement(GradientASCII,{}));
