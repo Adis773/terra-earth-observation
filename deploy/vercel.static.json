@@ -1,0 +1,1 @@
+{"version":2,"framework":null,"outputDirectory":"public","rewrites":[{"source":"/app","destination":"/app.html"},{"source":"/docs","destination":"/app.html"},{"source":"/api/:path*","destination":"https://terra-earth-observation-hack26.vercel.app/api/:path*"}]}

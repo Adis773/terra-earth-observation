@@ -6,9 +6,9 @@
 
 Satellite imagery, land-cover estimates and forest-change analysis in one map.
 
-[Watch the demo](https://terra-observe.vercel.app/demo.html) · [API guide](docs/API.md) · [Interactive API](https://terra-observe.vercel.app/api/docs) · [Live demo](https://terra-observe.vercel.app/)
+[Watch the demo](https://terra-observe-app.vercel.app/demo.html) · [API guide](docs/API.md) · [Interactive API](https://terra-observe-app.vercel.app/api/docs) · [Live demo](https://terra-observe-app.vercel.app/)
 
-[![Terra demonstration — click to play](assets/demo-preview.gif)](https://terra-observe.vercel.app/demo.html)
+[![Terra demonstration — click to play](assets/demo-preview.gif)](https://terra-observe-app.vercel.app/demo.html)
 
 </div>
 
@@ -21,7 +21,7 @@ The app has two analysis paths:
 - **Land cover:** classifies Sentinel-2 L1C scenes with Blue Marble Landcover. It reports water, trees, flooded vegetation, crops, built area, bare ground, snow/ice and rangeland, plus changes in tree class.
 - **Forest change:** runs the U-Net checkpoint from the supplied ML-Project on Landsat or Sentinel-2 scenes. It returns before/after images, a loss overlay, coverage and NDVI summaries.
 
-The interface is English by default and includes a Russian language switch. The site and API run on Vercel independently of your local computer. Free-tier quotas, cold starts, upstream imagery availability and platform uptime still apply.
+The interface is English by default and includes a Russian language switch. The static site and Python API run in separate Vercel projects independently of your local computer; the site proxies API requests to the existing backend deployment. Free-tier quotas, cold starts, upstream imagery availability and platform uptime still apply.
 
 ## Important interpretation
 
@@ -31,7 +31,7 @@ The forest U-Net was trained in Japan and has **not** been independently validat
 
 ## Demo
 
-The [video demonstration](https://terra-observe.vercel.app/demo.html), edited with Remotion from a real screen recording, shows an earlier interface and the cursor: select an area and view forest-change imagery. The numerical example is an experimental estimate, not a certified measurement.
+The [video demonstration](https://terra-observe-app.vercel.app/demo.html), edited with Remotion from a real screen recording, shows an earlier interface and the cursor: select an area and view forest-change imagery. The numerical example is an experimental estimate, not a certified measurement.
 
 ## Quick start
 
@@ -68,12 +68,12 @@ The container serves the interface and proxies requests to its Python process. P
 ## API at a glance
 
 ```bash
-curl -X POST https://terra-observe.vercel.app/api/v2/cover \
+curl -X POST https://terra-observe-app.vercel.app/api/v2/cover \
   -H "Content-Type: application/json" \
   -d '{"bbox":[65.46,44.84,65.463,44.843],"before_date":"2023-07-09","after_date":"2026-07-01","categories":["trees","water"]}'
 ```
 
-Coordinates are `[west, south, east, north]` in WGS84. For a single snapshot, omit `after_date`. The public API and [OpenAPI UI](https://terra-observe.vercel.app/api/docs) are hosted on Vercel. For production, add shared rate limits, authentication if appropriate, monitoring, persistent storage and independently validated models.
+Coordinates are `[west, south, east, north]` in WGS84. For a single snapshot, omit `after_date`. The public API and [OpenAPI UI](https://terra-observe-app.vercel.app/api/docs) are hosted on Vercel. For production, add shared rate limits, authentication if appropriate, monitoring, persistent storage and independently validated models.
 
 ## Architecture
 

@@ -1,6 +1,6 @@
 # Terra API
 
-The API accepts JSON and returns JSON with a UTF-8 content type. The public endpoint is `https://terra-observe.vercel.app`. It runs on the Vercel free tier, subject to usage limits, cold starts and upstream availability. For local use substitute `http://localhost:3187`. Open [Swagger UI](https://terra-observe.vercel.app/api/docs) for the current generated schema.
+The API accepts JSON and returns JSON with a UTF-8 content type. The public endpoint is `https://terra-observe-app.vercel.app`. It runs on the Vercel free tier, subject to usage limits, cold starts and upstream availability. For local use substitute `http://localhost:3187`. Open [Swagger UI](https://terra-observe-app.vercel.app/api/docs) for the current generated schema.
 
 ## Before you start
 
@@ -48,7 +48,7 @@ GeoTIFF pixels: 0 water, 1 trees, 2 flooded vegetation, 3 crops, 4 built area, 5
 ```python
 import requests
 
-base = "https://terra-observe.vercel.app"
+base = "https://terra-observe-app.vercel.app"
 payload = {
     "bbox": [65.46, 44.84, 65.463, 44.843],
     "before_date": "2023-07-09",
