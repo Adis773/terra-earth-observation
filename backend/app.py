@@ -1,3 +1,4 @@
+import raster_bootstrap  # Configure GDAL certificates before rasterio loads.
 import io, json, logging, threading, uuid, base64
 from datetime import date
 from functools import lru_cache
@@ -9,9 +10,6 @@ from rasterio.windows import from_bounds, Window, transform as window_transform
 from rasterio.warp import transform_bounds
 from fastapi import FastAPI, File, Form, UploadFile, HTTPException
 from fastapi.responses import Response
-import torch
-from torch import nn
-import torch.nn.functional as F
 import landcover
 
 app = FastAPI(title="Terra API", version="2.0.0", description="Satellite imagery and land-cover estimates. Scene availability and model quality vary by area.")
@@ -57,15 +55,20 @@ reports = {}
 model_lock = threading.Lock()
 
 def block(i,o):
+    from torch import nn
     return nn.Sequential(nn.Conv2d(i,o,3,padding=1,bias=False),nn.BatchNorm2d(o),nn.ReLU(inplace=True),nn.Conv2d(o,o,3,padding=1,bias=False),nn.BatchNorm2d(o),nn.ReLU(inplace=True))
 @lru_cache(maxsize=1)
 def forest_model():
+    import torch
+    from torch import nn
     b=16
     net=nn.ModuleDict({"e1":block(5,b),"e2":block(b,b*2),"e3":block(b*2,b*4),"e4":block(b*4,b*8),"mid":nn.Sequential(block(b*8,b*16),nn.Dropout2d(.2)),"u4":nn.ConvTranspose2d(b*16,b*8,2,stride=2),"d4":block(b*16,b*8),"u3":nn.ConvTranspose2d(b*8,b*4,2,stride=2),"d3":block(b*8,b*4),"u2":nn.ConvTranspose2d(b*4,b*2,2,stride=2),"d2":block(b*4,b*2),"u1":nn.ConvTranspose2d(b*2,b,2,stride=2),"d1":block(b*2,b),"out":nn.Conv2d(b,1,1)})
     ckpt=torch.load(Path(__file__).parent/'forest_unet.pt',map_location='cpu',weights_only=True)
     net.load_state_dict(ckpt['state_dict']); net.eval(); return net
 
 def forest_predict(a):
+    import torch
+    import torch.nn.functional as F
     net=forest_model(); h,w=a.shape[1:]; result=np.zeros((h,w),np.float32)
     for r in range(0,h,256):
       for c in range(0,w,256):

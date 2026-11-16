@@ -1,0 +1,1 @@
+{"version":2,"functions":{"api/index.py":{"includeFiles":"{backend,vendor}/**","maxDuration":300}},"rewrites":[{"source":"/api/v2/cover","destination":"/api/index.py"}]}

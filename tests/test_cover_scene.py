@@ -42,7 +42,7 @@ class CoverSceneTests(unittest.TestCase):
         from fastapi import HTTPException
         import cover_scene
         item=SimpleNamespace(assets={band:SimpleNamespace(href='s3://sentinel-s2-l1c/test.jp2') for band in cover_scene.BANDS})
-        with patch('cover_scene.candidates',return_value=[item]), patch('cover_scene.requests.get',side_effect=RuntimeError('upstream unavailable')):
+        with patch('cover_scene.candidates',return_value=[item]), patch('cover_scene.rasterio.open',side_effect=RuntimeError('archive unavailable')), patch('cover_scene.requests.get',side_effect=RuntimeError('upstream unavailable')):
             with self.assertRaises(HTTPException) as error:
                 cover_scene.fetch((0,0,.01,.01),date(2018,7,1),3,3)
         self.assertEqual(error.exception.status_code,503)

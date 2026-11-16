@@ -21,7 +21,7 @@ The app has two analysis paths:
 - **Land cover:** classifies Sentinel-2 L1C scenes with Blue Marble Landcover. It reports water, trees, flooded vegetation, crops, built area, bare ground, snow/ice and rangeland, plus changes in tree class.
 - **Forest change:** runs the U-Net checkpoint from the supplied ML-Project on Landsat or Sentinel-2 scenes. It returns before/after images, a loss overlay, coverage and NDVI summaries.
 
-The interface is English by default and includes a Russian language switch. The static site and Python API run in separate Vercel projects independently of your local computer; the site proxies API requests to the existing backend deployment. Free-tier quotas, cold starts, upstream imagery availability and platform uptime still apply.
+The dated land-cover endpoint reads Sentinel-2 L1C bands directly from the public AWS archive, with the image service as a fallback. The source and actual acquisition dates are returned in the result. The interface is English by default and includes a Russian language switch. The static site and Python API run in separate Vercel projects independently of your local computer; the site proxies API requests to the existing backend deployment. Free-tier quotas, cold starts, upstream imagery availability and platform uptime still apply.
 
 ## Important interpretation
 

@@ -1,4 +1,5 @@
 """Date-specific Sentinel-2 L1C land-cover inference."""
+import raster_bootstrap  # Must run before importing rasterio.
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from functools import lru_cache
@@ -8,6 +9,9 @@ import requests
 import pystac_client
 from fastapi import HTTPException
 from rasterio.io import MemoryFile
+import rasterio
+from rasterio.vrt import WarpedVRT
+from rasterio.transform import from_bounds
 import landcover
 
 EARTH='https://earth-search.aws.element84.com/v1'
@@ -44,9 +48,18 @@ def fetch(box,when,width,height):
             raw=raw.replace('s3://sentinel-s2-l1c/','https://sentinel-s2-l1c.s3.amazonaws.com/',1)
           if not raw.startswith('https://sentinel-s2-l1c.s3.amazonaws.com/'):
             raise ValueError('Неподдерживаемый источник канала Sentinel-2 L1C')
-          r=requests.get(endpoint,params={'url':raw,'return_mask':'false','resampling':'nearest'},timeout=90);r.raise_for_status()
-          with MemoryFile(r.content) as mem:
-            with mem.open() as ds:return ds.read(1)
+          # Read the actual L1C JP2 directly from the public AWS archive. WarpedVRT
+          # puts every band on the same WGS84 pixel grid, including edge pixels.
+          try:
+            with rasterio.Env(GDAL_DISABLE_READDIR_ON_OPEN='EMPTY_DIR', GDAL_HTTP_TIMEOUT='90', GDAL_HTTP_MAX_RETRY='2'):
+              with rasterio.open(raw) as src:
+                with WarpedVRT(src,crs='EPSG:4326',transform=from_bounds(*box,width,height),width=width,height=height,resampling=rasterio.enums.Resampling.nearest) as vrt:
+                  return vrt.read(1)
+          except Exception:
+            logging.warning('Direct archive read failed; trying image service',exc_info=True)
+            r=requests.get(endpoint,params={'url':raw,'return_mask':'false','resampling':'nearest'},timeout=90);r.raise_for_status()
+            with MemoryFile(r.content) as mem:
+              with mem.open() as ds:return ds.read(1)
         try:
           with ThreadPoolExecutor(max_workers=4) as pool:
             bands=np.stack(list(pool.map(read_band,BANDS)))
@@ -63,7 +76,7 @@ def fetch(box,when,width,height):
         mask=landcover.predict(bands,offset)
         valid &= mask!=7
         if valid.mean()<.2:continue
-        return mask,valid,{'item':item.id,'date':item.datetime.date().isoformat(),'satellite':'Sentinel-2 L1C','cloud_cover_scene_percent':item.properties.get('eo:cloud_cover'),'valid_percent':round(float(valid.mean())*100,2),'model':'Blue Marble Landcover medium','baseline':str(item.properties.get('s2:processing_baseline','unknown'))}
+        return mask,valid,{'item':item.id,'date':item.datetime.date().isoformat(),'satellite':'Sentinel-2 L1C','cloud_cover_scene_percent':item.properties.get('eo:cloud_cover'),'valid_percent':round(float(valid.mean())*100,2),'model':'Blue Marble Landcover medium','imagery_access':'AWS Sentinel-2 L1C archive','baseline':str(item.properties.get('s2:processing_baseline','unknown'))}
       if read_failures and not decoded_scenes:
         raise HTTPException(503,'Не удалось получить снимки из внешнего сервиса. Это ошибка источника данных, а не обязательно облачность. Попробуйте позже или выберите другую дату.')
       if read_failures:
